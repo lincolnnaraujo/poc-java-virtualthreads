@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'pix-app'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['app:8080']
+
+  - job_name: 'spi-sim'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['spi-sim:8081']
+
+  - job_name: 'rabbitmq'
+    # /metrics/per-object expoe metricas por fila (rabbitmq_queue_messages{queue=...}),
+    # necessarias para a profundidade das filas no dashboard. O /metrics padrao so agrega.
+    metrics_path: /metrics/per-object
+    static_configs:
+      - targets: ['rabbitmq:15692']

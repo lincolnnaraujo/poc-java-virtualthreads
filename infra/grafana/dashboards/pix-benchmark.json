@@ -1,0 +1,123 @@
+{
+  "uid": "pix-benchmark",
+  "title": "Pix Benchmark - Virtual vs Platform Threads",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-15m", "to": "now" },
+  "refresh": "5s",
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Throughput (TPS) por benchmark_mode",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_server_requests_seconds_count{application=\"pix-app\", uri=~\"/v1/pix.*\"}[1m])) by (benchmark_mode)",
+          "legendFormat": "{{benchmark_mode}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Latencia HTTP p95 / p99 (/v1/pix)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{application=\"pix-app\", uri=~\"/v1/pix.*\"}[1m])) by (le, benchmark_mode))",
+          "legendFormat": "p95 {{benchmark_mode}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{application=\"pix-app\", uri=~\"/v1/pix.*\"}[1m])) by (le, benchmark_mode))",
+          "legendFormat": "p99 {{benchmark_mode}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Threads de plataforma vivas (jvm_threads_live)",
+      "description": "Sob virtual threads este numero permanece baixo mesmo com alta concorrencia; sob platform threads ele escala com a carga.",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "jvm_threads_live_threads{application=\"pix-app\"}",
+          "legendFormat": "{{benchmark_mode}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "HikariCP (ativas / em espera / ociosas)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "hikaricp_connections_active{application=\"pix-app\"}", "legendFormat": "active" },
+        { "refId": "B", "expr": "hikaricp_connections_pending{application=\"pix-app\"}", "legendFormat": "pending" },
+        { "refId": "C", "expr": "hikaricp_connections_idle{application=\"pix-app\"}", "legendFormat": "idle" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Profundidade das filas RabbitMQ",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rabbitmq_queue_messages{queue=\"pix.recebido.q\"}", "legendFormat": "recebido.q" },
+        { "refId": "B", "expr": "rabbitmq_queue_messages{queue=\"pix.projecao.q\"}", "legendFormat": "projecao.q" },
+        { "refId": "C", "expr": "rabbitmq_queue_messages{queue=\"pix.recebido.dlq\"}", "legendFormat": "dlq" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "DLQ total (pix_dlq_total)",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(pix_dlq_total{application=\"pix-app\"})", "legendFormat": "DLQ" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Heap usado",
+      "gridPos": { "h": 6, "w": 9, "x": 6, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(jvm_memory_used_bytes{application=\"pix-app\", area=\"heap\"})", "legendFormat": "heap" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "CPU do processo",
+      "gridPos": { "h": 6, "w": 9, "x": 15, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "process_cpu_usage{application=\"pix-app\"}", "legendFormat": "{{benchmark_mode}}" }
+      ]
+    }
+  ]
+}

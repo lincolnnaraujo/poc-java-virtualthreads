@@ -1,0 +1,154 @@
+# POC Virtual Threads (Pix) - fatia 001 (fundacao)
+# Sobe: PostgreSQL + RabbitMQ + app. Fatias 005/006 adicionam spi-sim, prometheus e grafana.
+# Limites de recurso conforme envelope em memory/constitution.md.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pix-postgres
+    environment:
+      POSTGRES_DB: pix
+      POSTGRES_USER: pix
+      POSTGRES_PASSWORD: pix
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pix -d pix"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: pix-rabbitmq
+    ports:
+      - "5672:5672"      # AMQP
+      - "15672:15672"    # Management UI
+      - "15692:15692"    # Prometheus metrics (plugin rabbitmq_prometheus)
+    volumes:
+      - ./infra/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1g
+
+  spi-sim:
+    build:
+      context: ./spi-sim
+      dockerfile: Dockerfile
+    container_name: pix-spi-sim
+    ports:
+      - "8081:8081"
+    environment:
+      # Configuracao inicial (reconfiguravel em runtime via POST /spi/config).
+      SPI_LATENCIA_MEDIA_MS: "100"
+      SPI_JITTER_MS: "30"
+      SPI_TAXA_FALHA: "0.0"
+      SPI_TAXA_TIMEOUT: "0.0"
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx384m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 512m
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pix-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      spi-sim:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pix
+      SPRING_DATASOURCE_USERNAME: pix
+      SPRING_DATASOURCE_PASSWORD: pix
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: "5672"
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
+      # URL do autorizador SPI simulado (consumido pela fatia 003).
+      AUTORIZADOR_SPI_URL: http://spi-sim:8081/spi/autorizar
+      # Toggle do benchmark (fatia 007). Default: baseline platform threads.
+      # Toggles do benchmark (fatia 007) - definidos por .env.platform / .env.virtual.
+      SPRING_THREADS_VIRTUAL_ENABLED: "${SPRING_THREADS_VIRTUAL_ENABLED:-false}"
+      BENCHMARK_MODE: "${BENCHMARK_MODE:-platform}"
+      BENCHMARK_CONSUMER_MODE: "${BENCHMARK_CONSUMER_MODE:-platform}"
+      BENCHMARK_CONSUMER_CONCURRENCY: "${BENCHMARK_CONSUMER_CONCURRENCY:-50}"
+      # -Djdk.tracePinnedThreads=full: registra no log quando uma virtual thread sofre pinning (P2/5.3).
+      JAVA_TOOL_OPTIONS: "-Xms512m -Xmx1g -Djdk.tracePinnedThreads=full"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 1536m
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: pix-prometheus
+    depends_on:
+      - app
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 768m
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: pix-grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 768m
+
+volumes:
+  pgdata:

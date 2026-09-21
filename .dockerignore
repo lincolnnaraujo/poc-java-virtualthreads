@@ -1,0 +1,13 @@
+target/
+.git/
+.idea/
+*.iml
+*.log
+.DS_Store
+spi-sim/
+infra/
+benchmark/
+specs/
+docs/
+memory/
+*.md

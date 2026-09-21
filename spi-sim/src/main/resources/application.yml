@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: spi-sim
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# Configuracao inicial (sobrescrevivel por variavel de ambiente e por POST /spi/config)
+spi:
+  latencia-media-ms: 100
+  jitter-ms: 30
+  taxa-falha: 0.0
+  taxa-timeout: 0.0
+  taxa-rejeicao: 0.0
+  timeout-ms: 3000
